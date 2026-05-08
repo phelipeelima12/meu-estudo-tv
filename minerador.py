@@ -1,67 +1,60 @@
 import os
+import re
+import base64
 from playwright.sync_api import sync_playwright
 
 def minerar():
     with sync_playwright() as p:
-        # 1. Configuração do navegador (Simulando um PC comum para evitar bloqueios)
         browser = p.chromium.launch(headless=True)
+        # Simulando um Windows comum com Chrome
         context = browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            viewport={'width': 1280, 'height': 720}
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
         page = context.new_page()
         
-        # 2. URL ALVO (O canal que você escolheu)
         url_alvo = "https://canaistops.club/aovivo/sportv-ao-vivo-live-online-gratis/" 
-        
         links = []
 
-        # 3. Capturador de tráfego de rede (O "Pescador")
-        def handle_request(request):
-            url = request.url.lower()
-            # Filtra por extensões e padrões comuns de streaming de canais fechados
-            if any(ext in url for ext in [".m3u8", "playlist.m3u8", "chunklist", "stream.m3u8"]):
-                if request.url not in links:
-                    # Ignora links de anúncios conhecidos para limpar a lista
-                    if "ads" not in url and "telemetry" not in url:
-                        links.append(request.url)
+        # 1. Pega tudo que passa na rede (como já vínhamos fazendo)
+        page.on("request", lambda r: links.append(r.url) if ".m3u8" in r.url.lower() else None)
 
-        page.on("request", handle_request)
-        
-        print(f"[*] Iniciando mineração no alvo: {url_alvo}")
+        print(f"[*] Minerando: {url_alvo}")
         
         try:
-            # 4. Acessa a página
-            page.goto(url_alvo, wait_until="domcontentloaded", timeout=60000)
-            print("[*] Página carregada. Aguardando anúncios iniciais...")
-            page.wait_for_timeout(10000) # 10 segundos para os banners aparecerem
-            
-            # 5. Lógica de "Limpeza" e Play
-            # Clica em 3 pontos diferentes para garantir que fechou popups e deu play
-            pontos_de_clique = [(640, 360), (640, 400), (600, 300)]
-            for x, y in pontos_de_clique:
-                print(f"[*] Tentando clique em {x}, {y}...")
-                page.mouse.click(x, y)
-                page.wait_for_timeout(3000) # Espera 3s entre cliques para o site reagir
+            page.goto(url_alvo, wait_until="load", timeout=60000)
+            page.wait_for_timeout(15000)
 
-            # 6. Tempo de espera final para o stream começar a rodar
-            print("[*] Aguardando captura final do stream...")
-            page.wait_for_timeout(30000) 
+            # 2. ATAQUE DE SCRAPING: Busca links escondidos no código HTML
+            content = page.content()
             
+            # Busca padrões de links m3u8 em texto ou escondidos em aspas
+            regex_m3u8 = r'(https?://[^\s"\']+\.m3u8[^\s"\']*)'
+            achados_no_html = re.findall(regex_m3u8, content)
+            links.extend(achados_no_html)
+
+            # 3. ATAQUE DE BASE64: Muitos sites escondem o link em Base64
+            # Busca strings longas que podem ser links codificados
+            b64_pattern = r'["\']([A-Za-z0-9+/={4,})["\']'
+            for match in re.findall(b64_pattern, content):
+                try:
+                    decoded = base64.b64decode(match).decode('utf-8')
+                    if ".m3u8" in decoded:
+                        links.append(decoded)
+                except:
+                    continue
+
         except Exception as e:
-            print(f"[!] Erro durante o processo: {e}")
+            print(f"[!] Erro: {e}")
 
-        # 7. Salva os resultados no arquivo que o GitHub Actions vai ler
-        if not links:
-            print("[!] Nenhum link de canal foi encontrado. Tente outra URL ou aumente o tempo.")
-            with open("lista.m3u", "w") as f:
-                f.write("#EXTM3U\n# INFO: Nenhum canal encontrado. Verifique se o site mudou o player.\n")
-        else:
-            print(f"[OK] Sucesso! Encontramos {len(links)} possíveis links de stream.")
-            with open("lista.m3u", "w") as f:
-                f.write("#EXTM3U\n")
-                # Salva os links encontrados
-                for i, link in enumerate(sorted(set(links))):
+        # Salva os resultados
+        valid_links = sorted(set([l for l in links if "http" in l and "ads" not in l.lower()]))
+        
+        with open("lista.m3u", "w") as f:
+            f.write("#EXTM3U\n")
+            if not valid_links:
+                f.write("# INFO: O site bloqueou o robô. Tente usar o Cloudflare Worker como Proxy.\n")
+            else:
+                for i, link in enumerate(valid_links):
                     f.write(f"#EXTINF:-1, Canal Minerado {i+1}\n{link}\n")
         
         browser.close()
