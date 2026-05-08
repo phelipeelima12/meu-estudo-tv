@@ -1,0 +1,34 @@
+name: Mineração Diária de Canais
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # Roda todo dia à meia-noite
+  workflow_dispatch: # Permite que você rode manualmente quando quiser
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar código do repo
+        uses: actions/checkout@v3
+
+      - name: Instalar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Instalar Dependências
+        run: |
+          pip install playwright
+          playwright install chromium
+
+      - name: Rodar Minerador
+        run: python minerador.py
+
+      - name: Salvar Mudanças
+        run: |
+          git config --global user.name "AutoMiner"
+          git config --global user.email "bot@github.com"
+          git add lista.m3u
+          git commit -m "Lista atualizada automaticamente" || exit 0
+          git push
