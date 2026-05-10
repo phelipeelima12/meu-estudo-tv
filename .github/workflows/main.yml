@@ -19,8 +19,7 @@ jobs:
 
       - name: Instalar Dependências
         run: |
-          pip install playwright
-          playwright install chromium
+          pip install requests
 
       - name: Rodar Minerador
         run: python minerador.py
