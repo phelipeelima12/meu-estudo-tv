@@ -6,22 +6,22 @@ from playwright.sync_api import sync_playwright
 def minerar():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        # Simulando um Windows comum com Chrome
-        context = browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        )
-        page = context.new_page()
+        page = browser.new_page()
         
-        url_alvo = "https://canaistops.club/aovivo/sportv-ao-vivo-live-online-gratis/" 
+        # --- CONFIGURAÇÃO DO SEU PROXY ---
+        meu_worker = "https://round-morning-1174.paginainsta32.workers.dev/"
+        site_alvo = "https://canaistops.club/aovivo/sportv-ao-vivo-live-online-gratis/"
+        
+        # A URL final que o robô vai acessar
+        url_com_proxy = f"{meu_worker}/?url={site_alvo}"
+        # ---------------------------------
+
         links = []
-
-        # 1. Pega tudo que passa na rede (como já vínhamos fazendo)
-        page.on("request", lambda r: links.append(r.url) if ".m3u8" in r.url.lower() else None)
-
-        print(f"[*] Minerando: {url_alvo}")
+        print(f"[*] Minerando via Proxy: {url_com_proxy}")
         
         try:
-            page.goto(url_alvo, wait_until="load", timeout=60000)
+            page.goto(url_com_proxy, wait_until="load", timeout=60000)
+            # O resto do código (Regex e Base64) continua igual...
             page.wait_for_timeout(15000)
 
             # 2. ATAQUE DE SCRAPING: Busca links escondidos no código HTML
