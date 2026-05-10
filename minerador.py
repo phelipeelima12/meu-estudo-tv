@@ -7,82 +7,81 @@ TOKEN_BASEROW = "KFB2YupQfqQZj6kFDwO6NKaje07vd6DP"
 ID_TABELA_CONTEUDOS = "1186"
 ID_TABELA_CATEGORIAS = "1190"
 
-def limpar_canais_antigos():
+def adicionar_novo_canal(nome, link):
     """
-    Remove apenas os itens de TV da sua VPS na tabela 1186.
-    Preserva Filmes e Séries.
+    Cria uma linha do zero na sua tabela 1186.
+    Configura Nome, Link, Capa e vincula à Categoria 1190.
     """
-    print(f"[*] Conectando à VPS {BASE_URL} para limpeza seletiva...")
-    url = f"{BASE_URL}/api/database/rows/table/{ID_TABELA_CONTEUDOS}/?user_field_names=true"
-    headers = {"Authorization": f"Token {TOKEN_BASEROW}"}
-    
-    try:
-        response = requests.get(url, headers=headers)
-        if response.status_code == 200:
-            linhas = response.json().get("results", [])
-            for linha in linhas:
-                nome = str(linha.get("Nome", "")).upper()
-                
-                # Critério: apaga apenas canais premium conhecidos para atualizar o link
-                if any(p in nome for p in ["SPORTV", "HBO", "PREMIERE", "ESPN", "DISCOVERY", "DISNEY", "NICK"]):
-                    id_linha = linha["id"]
-                    requests.delete(f"{BASE_URL}/api/database/rows/table/{ID_TABELA_CONTEUDOS}/{id_linha}/", headers=headers)
-        print("[OK] Canais antigos removidos da VPS.")
-    except Exception as e:
-        print(f"[!] Erro na conexão com a VPS: {e}")
-
-def subir_canais_novos(canais):
-    """
-    Envia os novos links para a tabela 1186 na sua VPS.
-    """
-    print(f"[*] Enviando {len(canais)} canais para a sua API na VPS...")
     url = f"{BASE_URL}/api/database/rows/table/{ID_TABELA_CONTEUDOS}/?user_field_names=true"
     headers = {
         "Authorization": f"Token {TOKEN_BASEROW}",
         "Content-Type": "application/json"
     }
     
-    for nome, link in canais:
-        payload = {
-            "Nome": nome,
-            "Link": link,
-            "Capa": "https://imgur.com/vHEx37U.png",
-            "Categoria": [int(ID_TABELA_CATEGORIAS)]
-        }
-        # Envia para a sua VPS
-        requests.post(url, headers=headers, json=payload)
-    print("[OK] Banco de dados na VPS atualizado!")
+    payload = {
+        "Nome": nome,
+        "Link": link,
+        "Capa": "https://imgur.com/vHEx37U.png", # Capa padrão para TV
+        "Categoria": [int(ID_TABELA_CATEGORIAS)]  # Vincula à sua categoria de TV
+    }
+    
+    try:
+        # Timeout de 15s para dar tempo da sua VPS responder
+        r = requests.post(url, headers=headers, json=payload, timeout=15)
+        return r.status_code
+    except Exception as e:
+        print(f"[!] Erro ao conectar na VPS: {e}")
+        return 500
 
 def minerar():
-    # Fontes globais de links limpos
+    # Fontes globais que o seu robô já sabe ler
     fontes = [
-        "https://raw.githubusercontent.com/iptv-org/iptv/master/streams/br.m3u",
+        "https://iptv-org.github.io/iptv/countries/br.m3u",
         "https://raw.githubusercontent.com/LITUATUI/IPTV/main/BR.m3u",
-        "https://iptv-org.github.io/iptv/countries/br.m3u"
+        "https://raw.githubusercontent.com/frizon/iptv/master/brazil.m3u"
     ]
     
-    lista_canais = []
-    headers_br = {'User-Agent': 'Mozilla/5.0'}
+    print(f"[*] Iniciando a criação da sua grade de canais na VPS...")
+    canais_para_adicionar = []
+    
+    headers_browser = {'User-Agent': 'Mozilla/5.0'}
 
     for url in fontes:
         try:
-            r = requests.get(url, headers=headers_br, timeout=20)
-            if r.status_code == 200:
-                matches = re.findall(r'#EXTINF:.*?,(.*?)\n(https?://.*?\.m3u8.*)', r.text)
+            print(f"[*] Escaneando fonte: {url}")
+            res = requests.get(url, headers=headers_browser, timeout=20)
+            if res.status_code == 200:
+                # O Regex extrai o Nome e o Link m3u8
+                matches = re.findall(r'#EXTINF:.*?,(.*?)\n(https?://.*?\.m3u8.*)', res.text)
                 for nome, link in matches:
                     n_up = nome.upper()
-                    if any(p in n_up for p in ["SPORTV", "HBO", "PREMIERE", "ESPN", "DISCOVERY", "DISNEY", "NICK"]):
-                        lista_canais.append((nome.strip(), link.strip()))
-        except:
-            continue
+                    # Filtro para pegar apenas o "filé mignon" (Canais Premium)
+                    premium = ["SPORTV", "HBO", "PREMIERE", "ESPN", "DISCOVERY", "DISNEY", "NICK", "AXN", "TNT"]
+                    if any(p in n_up for p in premium):
+                        canais_para_adicionar.append((nome.strip(), link.strip()))
+        except Exception as e:
+            print(f"[!] Falha ao ler fonte: {e}")
 
-    final = list(set(lista_canais))
-    
-    if final:
-        limpar_canais_antigos()
-        subir_canais_novos(final)
+    # Remove duplicados para não criar canais repetidos
+    lista_final = list(set(canais_para_adicionar))
+    print(f"[*] Total de canais premium encontrados: {len(lista_final)}")
+
+    if lista_final:
+        sucesso = 0
+        # Vamos adicionar os primeiros 40 canais encontrados
+        for nome, link in lista_final[:40]:
+            print(f"[*] Tentando adicionar: {nome}...")
+            status = adicionar_novo_canal(nome, link)
+            
+            if status in [200, 201]:
+                sucesso += 1
+                print(f"[OK] {nome} criado com sucesso!")
+            else:
+                print(f"[ERRO {status}] Não foi possível criar o canal {nome}.")
+        
+        print(f"\n[FIM] Missão cumprida! {sucesso} canais novos adicionados à sua VPS.")
     else:
-        print("[!] Nenhum link funcional encontrado nos repositórios.")
+        print("[!] O robô não encontrou links premium nas fontes agora. Tente rodar novamente mais tarde.")
 
 if __name__ == "__main__":
     minerar()
