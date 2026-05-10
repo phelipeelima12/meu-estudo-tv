@@ -1,6 +1,5 @@
 import requests
 import re
-import json
 
 # --- CONFIGURAÇÕES DA SUA VPS ---
 BASE_URL = "http://213.199.56.115"
@@ -9,18 +8,16 @@ ID_TABELA_CONTEUDOS = "1186"
 ID_CATEGORIA_CANAIS = 22 
 
 def enviar_vps(nome, link):
-    # Usamos o parâmetro user_field_names=true para tentar usar Nome/Link/Capa
     url = f"{BASE_URL}/api/database/rows/table/{ID_TABELA_CONTEUDOS}/?user_field_names=true"
     headers = {
         "Authorization": f"Token {TOKEN_BASEROW}",
         "Content-Type": "application/json"
     }
     
-    # Payload formatado para o seu PHFLIX
+    # REMOVI O CAMPO "Capa" PARA EVITAR O ERRO 400
     payload = {
         "Nome": nome,
         "Link": link,
-        "Capa": "https://imgur.com/vHEx37U.png",
         "Categoria": [ID_CATEGORIA_CANAIS]
     }
     
@@ -31,7 +28,7 @@ def enviar_vps(nome, link):
             print(f"[OK] Canal Criado: {nome}")
             return True
         else:
-            # Se der erro, ele vai imprimir exatamente o que a VPS respondeu
+            # Se ainda der erro, o log vai nos dizer qual campo sobrou que está errado
             print(f"[!] Erro {r.status_code} em {nome}: {r.text}")
             return False
     except Exception as e:
@@ -39,42 +36,38 @@ def enviar_vps(nome, link):
         return False
 
 def minerar():
-    # Fontes globais de reserva
     fontes = [
         "https://iptv-org.github.io/iptv/countries/br.m3u",
         "https://raw.githubusercontent.com/LITUATUI/IPTV/main/BR.m3u"
     ]
     
-    print(f"[*] Iniciando Injeção de Dados na VPS: {BASE_URL}")
+    print(f"[*] Iniciando Injeção Direta na VPS: {BASE_URL}")
     canais = []
 
     for url in fontes:
         try:
             res = requests.get(url, timeout=25)
             if res.status_code == 200:
-                # Captura Nome e Link
                 matches = re.findall(r'#EXTINF:.*?,(.*?)\n(https?://.*?\.m3u8.*)', res.text)
                 for n, l in matches:
                     n_up = n.upper()
-                    # Filtro para garantir que pegamos os principais
-                    if any(p in n_up for p in ["SPORTV", "HBO", "PREMIERE", "ESPN", "NICK", "DISNEY", "TV"]):
+                    # Filtro para os principais canais
+                    if any(p in n_up for p in ["SPORTV", "HBO", "PREMIERE", "ESPN", "NICK", "DISNEY"]):
                         canais.append((n.strip(), l.strip()))
         except:
             continue
 
     lista_limpa = list(set(canais))
-    print(f"[*] Canais prontos para subir: {len(lista_limpa)}")
-
+    
     if lista_limpa:
+        print(f"[*] Canais encontrados: {len(lista_limpa)}. Tentando subir os 5 primeiros...")
         sucesso = 0
-        # Tenta subir os primeiros 5 para validar a estrutura
         for nome, link in lista_limpa[:5]:
             if enviar_vps(nome, link):
                 sucesso += 1
-        
-        print(f"\n[FIM] Relatório: {sucesso} canais inseridos com sucesso.")
+        print(f"\n[FIM] Sucesso: {sucesso} canais inseridos.")
     else:
-        print("[!] Nenhuma fonte retornou dados. Verifique sua internet ou as URLs das fontes.")
+        print("[!] Nenhum canal encontrado nas fontes.")
 
 if __name__ == "__main__":
     minerar()
