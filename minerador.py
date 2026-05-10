@@ -11,52 +11,68 @@ def minerar():
         )
         page = context.new_page()
         
-        # --- CONFIGURAÇÃO DO SEU PROXY WORKER ---
+        # --- SUA ESTRUTURA JÁ FUNCIONAL ---
         meu_worker = "https://round-morning-1174.paginainsta32.workers.dev"
         site_de_tv = "https://canaistops.club/aovivo/sportv-ao-vivo-live-online-gratis/"
-        
-        # Aqui o robô pede para o Worker buscar o site pra ele
         url_alvo = f"{meu_worker}/?url={site_de_tv}"
-        # ----------------------------------------
+        # ----------------------------------
 
-        links = []
-        print(f"[*] Minerando via Proxy Worker: {url_alvo}")
+        links_brutos = []
+        
+        # Captura links que passam pela rede enquanto o Worker carrega o HTML
+        page.on("request", lambda r: links_brutos.append(r.url) if ".m3u8" in r.url.lower() else None)
+
+        print(f"[*] Escaneando: {url_alvo}")
         
         try:
-            # O Worker entrega o HTML e o Playwright analisa
-            page.goto(url_alvo, wait_until="load", timeout=60000)
-            page.wait_for_timeout(15000)
+            page.goto(url_alvo, wait_until="networkidle", timeout=60000)
+            page.wait_for_timeout(10000)
 
-            # Pega o conteúdo que o Worker trouxe
-            content = page.content()
+            # Pega o HTML que o Worker trouxe
+            html_content = page.content()
             
-            # BUSCA 1: Regex direta por links .m3u8
-            regex_m3u8 = r'(https?://[^\s"\']+\.m3u8[^\s"\']*)'
-            links.extend(re.findall(regex_m3u8, content))
+            # 1. BUSCA POR REGEX (Links diretos no código)
+            # Procura links m3u8 em aspas simples, duplas ou soltos
+            padrao_direto = r'["\'](https?://[^\s"\']+\.m3u8[^\s"\']*)["\']'
+            links_brutos.extend(re.findall(padrao_direto, html_content))
 
-            # BUSCA 2: Decodificação de Base64 (comum em canais fechados)
-            b64_pattern = r'["\']([A-Za-z0-9+/]{40,})["\']'
-            for match in re.findall(b64_pattern, content):
+            # 2. BUSCA POR STRINGS EMBUTIDAS (Onde o link fica escondido)
+            # Procura por qualquer coisa que pareça um link de stream
+            padrao_generico = r'(https?://[^\s"\']+/playlist\.m3u8[^\s"\']*)'
+            links_brutos.extend(re.findall(padrao_generico, html_content))
+
+            # 3. DECODIFICADOR DE SEGURANÇA (Base64)
+            # Procura blocos longos de texto que podem ser links codificados
+            blocos_suspeitos = re.findall(r'["\']([A-Za-z0-9+/]{50,})["\']', html_content)
+            for bloco in blocos_suspeitos:
                 try:
-                    decoded = base64.b64decode(match).decode('utf-8')
-                    if ".m3u8" in decoded:
-                        links.append(decoded)
+                    decodificado = base64.b64decode(bloco).decode('utf-8')
+                    if "http" in decodificado and ".m3u8" in decodificado:
+                        links_brutos.append(decodificado)
                 except:
                     continue
 
         except Exception as e:
-            print(f"[!] Erro na mineração: {e}")
+            print(f"[!] Erro: {e}")
 
-        # Limpeza: remove duplicados e links de anúncios
-        valid_links = sorted(set([l for l in links if "http" in l and "ads" not in l.lower()]))
-        
+        # --- LIMPEZA E VALIDAÇÃO ---
+        links_finais = []
+        for l in set(links_brutos):
+            # Filtra links de propaganda e garante que seja uma URL válida
+            l_lower = l.lower()
+            if "http" in l_lower and ".m3u8" in l_lower:
+                if not any(x in l_lower for x in ["ads", "popunder", "telemetry", "google", "facebook"]):
+                    links_finais.append(l)
+
+        # Grava o resultado para o seu App Roku/Android
         with open("lista.m3u", "w") as f:
             f.write("#EXTM3U\n")
-            if not valid_links:
-                f.write("# INFO: O Worker trouxe o site, mas o link m3u8 nao foi encontrado no codigo.\n")
+            if not links_finais:
+                f.write("# INFO: O sinal foi capturado mas o link real esta protegido por DRM ou Token Dinamico.\n")
+                print("[!] Nada encontrado.")
             else:
-                print(f"[OK] {len(valid_links)} links encontrados!")
-                for i, link in enumerate(valid_links):
+                print(f"[OK] Encontramos {len(links_finais)} links!")
+                for i, link in enumerate(sorted(links_finais)):
                     f.write(f"#EXTINF:-1, Canal Minerado {i+1}\n{link}\n")
         
         browser.close()
