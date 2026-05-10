@@ -8,17 +8,17 @@ ID_TABELA_CONTEUDOS = "1186"
 ID_CATEGORIA_CANAIS = 22 
 
 def enviar_vps(nome, link):
-    # O parâmetro user_field_names=true permite usar os nomes Nome, Links e Capa
+    # user_field_names=true faz o Baserow entender os nomes das colunas em vez de IDs chatos
     url = f"{BASE_URL}/api/database/rows/table/{ID_TABELA_CONTEUDOS}/?user_field_names=true"
     headers = {
         "Authorization": f"Token {TOKEN_BASEROW}",
         "Content-Type": "application/json"
     }
     
-    # AJUSTADO: Agora usa "Links" (com S) conforme o seu print
+    # PAYLOAD: Ajustado para "Link" conforme sua instrução direta
     payload = {
         "Nome": nome,
-        "Links": link,
+        "Link": link,
         "Capa": "https://imgur.com/vHEx37U.png",
         "Categoria": [ID_CATEGORIA_CANAIS]
     }
@@ -30,11 +30,11 @@ def enviar_vps(nome, link):
             print(f"[OK] Canal Criado: {nome}")
             return True
         else:
-            # Se der erro, ele vai imprimir para sabermos se ainda falta algo
+            # Se der erro, ele vai cuspir o motivo exato aqui
             print(f"[!] Erro {r.status_code} em {nome}: {r.text}")
             return False
     except Exception as e:
-        print(f"[!] Erro de conexão com a VPS: {e}")
+        print(f"[!] Falha de conexão: {e}")
         return False
 
 def minerar():
@@ -43,18 +43,17 @@ def minerar():
         "https://raw.githubusercontent.com/LITUATUI/IPTV/main/BR.m3u"
     ]
     
-    print(f"[*] Iniciando Injeção na VPS: {BASE_URL}")
+    print(f"[*] Minerando e enviando para a coluna 'Link' na VPS...")
     canais = []
 
     for url in fontes:
         try:
             res = requests.get(url, timeout=25)
             if res.status_code == 200:
-                # Regex para pegar o Nome e o Link
                 matches = re.findall(r'#EXTINF:.*?,(.*?)\n(https?://.*?\.m3u8.*)', res.text)
                 for n, l in matches:
                     n_up = n.upper()
-                    # Filtro para os canais que você quer
+                    # Pegando os principais canais fechados
                     if any(p in n_up for p in ["SPORTV", "HBO", "PREMIERE", "ESPN", "NICK", "DISNEY", "TNT"]):
                         canais.append((n.strip(), l.strip()))
         except:
@@ -63,15 +62,15 @@ def minerar():
     lista_limpa = list(set(canais))
     
     if lista_limpa:
-        print(f"[*] Canais encontrados: {len(lista_limpa)}. Subindo os primeiros...")
+        print(f"[*] Encontrados: {len(lista_limpa)}. Iniciando upload...")
         sucesso = 0
-        # Tenta subir os primeiros 10
-        for nome, link in lista_limpa[:10]:
+        # Vamos tentar subir os primeiros 15
+        for nome, link in lista_limpa[:15]:
             if enviar_vps(nome, link):
                 sucesso += 1
-        print(f"\n[FIM] Sucesso: {sucesso} canais inseridos na tabela 1186.")
+        print(f"\n[FIM] {sucesso} canais novos na sua tabela 1186!")
     else:
-        print("[!] Nenhum canal encontrado. Verifique se as fontes estão ON.")
+        print("[!] Nenhum link premium encontrado. Verifique as fontes.")
 
 if __name__ == "__main__":
     minerar()
