@@ -5,83 +5,72 @@ import re
 BASE_URL = "http://213.199.56.115"
 TOKEN_BASEROW = "KFB2YupQfqQZj6kFDwO6NKaje07vd6DP"
 ID_TABELA_CONTEUDOS = "1186"
-ID_CATEGORIA_CANAIS = 22 # ID correspondente a 'Canais' na sua tabela 1190
+ID_CATEGORIA_CANAIS = 22 # Categoria 'Canais'
 
-def criar_canal_no_baserow(nome, link):
-    """
-    Cria uma nova linha na tabela 1186 da sua VPS.
-    """
+def enviar_vps(nome, link):
     url = f"{BASE_URL}/api/database/rows/table/{ID_TABELA_CONTEUDOS}/?user_field_names=true"
     headers = {
         "Authorization": f"Token {TOKEN_BASEROW}",
         "Content-Type": "application/json"
     }
     
-    # Payload com a estrutura que o seu Baserow espera
+    # Payload simplificado para teste
     payload = {
         "Nome": nome,
         "Link": link,
-        "Capa": "https://imgur.com/vHEx37U.png", # Capa padrão para TV
-        "Categoria": [ID_CATEGORIA_CANAIS]      # Vincula ao ID 22 (Canais)
+        "Capa": "https://imgur.com/vHEx37U.png",
+        "Categoria": [ID_CATEGORIA_CANAIS]
     }
     
     try:
-        # Enviando para a VPS (timeout de 15s para garantir a conexão)
         r = requests.post(url, headers=headers, json=payload, timeout=15)
+        if r.status_code not in [200, 201]:
+            print(f"[!] Erro da VPS ao adicionar {nome}: {r.status_code} - {r.text}")
         return r.status_code
     except Exception as e:
-        print(f"[!] Erro ao enviar {nome}: {e}")
+        print(f"[!] Falha total de conexão com a VPS: {e}")
         return 500
 
 def minerar():
-    # Fontes globais de alta confiabilidade
+    # Fontes alternativas e diretas para não falhar a busca
     fontes = [
         "https://iptv-org.github.io/iptv/countries/br.m3u",
-        "https://raw.githubusercontent.com/LITUATUI/IPTV/main/BR.m3u",
-        "https://raw.githubusercontent.com/frizon/iptv-brazil/master/brazil.m3u"
+        "https://raw.githubusercontent.com/LITUATUI/IPTV/main/BR.m3u"
     ]
     
-    print(f"[*] Iniciando a construção da grade de canais na VPS...")
+    print(f"[*] Iniciando teste de carga na VPS: {BASE_URL}")
     canais_encontrados = []
     
-    headers_req = {'User-Agent': 'Mozilla/5.0'}
-
     for url in fontes:
         try:
-            print(f"[*] Escaneando: {url}")
-            r = requests.get(url, headers=headers_req, timeout=20)
+            print(f"[*] Lendo: {url}")
+            r = requests.get(url, timeout=20)
             if r.status_code == 200:
-                # Regex para extrair Nome e Link m3u8
+                # Regex que aceita quase qualquer formato de nome
                 matches = re.findall(r'#EXTINF:.*?,(.*?)\n(https?://.*?\.m3u8.*)', r.text)
                 for nome, link in matches:
-                    n_up = nome.upper().strip()
-                    # Filtro de canais premium para sua grade
-                    premium = ["SPORTV", "HBO", "PREMIERE", "ESPN", "DISCOVERY", "DISNEY", "NICK", "AXN", "TNT"]
-                    if any(p in n_up for p in premium):
+                    # Se encontrar qualquer coisa que pareça canal, adiciona para teste
+                    if len(nome) > 2:
                         canais_encontrados.append((nome.strip(), link.strip()))
         except:
             continue
 
-    # Remove duplicados para evitar canais repetidos no banco
-    lista_final = list(set(canais_encontrados))
-    print(f"[*] Total de canais premium prontos para criação: {len(lista_final)}")
+    # Remove duplicados
+    lista = list(set(canais_encontrados))
+    print(f"[*] Canais encontrados no total: {len(lista)}")
 
-    if lista_final:
+    if lista:
         sucesso = 0
-        # Vamos processar os primeiros 30 para popular sua tabela rapidamente
-        for nome, link in lista_final[:30]:
-            print(f"[*] Criando: {nome}...")
-            status = criar_canal_no_baserow(nome, link)
-            
+        # Tenta subir os primeiros 10 para ver se a VPS aceita
+        for nome, link in lista[:10]:
+            status = enviar_vps(nome, link)
             if status in [200, 201]:
                 sucesso += 1
-                print(f"[OK] {nome} adicionado!")
-            else:
-                print(f"[ERRO {status}] Falha ao criar {nome}.")
+                print(f"[OK] Adicionado: {nome}")
         
-        print(f"\n[FIM] {sucesso} canais novos criados na tabela 1186 da sua VPS.")
+        print(f"\n[FIM] Sucesso em {sucesso} de 10 tentativas.")
     else:
-        print("[!] Nenhum canal encontrado nas fontes. Tente rodar o Action novamente.")
+        print("[!] O robô não encontrou NENHUM link nas fontes. Verifique se as URLs das fontes abrem no seu navegador.")
 
 if __name__ == "__main__":
     minerar()
